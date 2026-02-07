@@ -7,3 +7,6 @@
 *extracted*
 *.csv
 *.gz
+*.json
+*.crc
+*_SUCCESS*
