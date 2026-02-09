@@ -6,6 +6,8 @@ from pyspark.sql.functions import (
     sum as _sum,
     date_format,
 )
+import great_expectations as gx
+from great_expectations.expectations import ExpectColumnValuesToBeBetween
 from pyspark.sql.types import (
     StructType,
     StructField,
@@ -53,6 +55,28 @@ df = df.withColumn(
     "duration_seconds",
     unix_timestamp(col("ended_at")) - unix_timestamp(col("started_at"))
 )
+
+# Validate that no trip duration exceeds 24 hours (86400 seconds)
+# ---------------------------------------------------------------
+context = gx.get_context()
+data_source = context.data_sources.add_spark("spark_source", spark_config={})
+data_asset = data_source.add_dataframe_asset("trips")
+batch_definition = data_asset.add_batch_definition_whole_dataframe("batch")
+suite = context.suites.add(gx.ExpectationSuite(name="trip_validations"))
+suite.add_expectation(
+    ExpectColumnValuesToBeBetween(
+        column="duration_seconds", min_value=0, max_value=86400
+    )
+)
+validation_def = context.validation_definitions.add(
+    gx.ValidationDefinition(name="validate_trips", data=batch_definition, suite=suite)
+)
+checkpoint = context.checkpoints.add(
+    gx.Checkpoint(name="trip_checkpoint", validation_definitions=[validation_def])
+)
+results = checkpoint.run(batch_parameters={"dataframe": df})
+print(f"Validation passed: {results.success}")
+# ---------------------------------------------------------------
 
 df = df.withColumn(
     "date", date_format(col("started_at"), "yyyy-MM-dd")
